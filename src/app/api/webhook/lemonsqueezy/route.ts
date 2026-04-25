@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     console.log('LS Webhook event:', eventName, JSON.stringify(payload, null, 2))
 
     // Handle order completed event
-    if (eventName === 'order_created' || eventName === 'order_paid') {
+    if (eventName === 'order_created') {
       const orderData = payload.meta?.custom_data
       const visitorId = orderData?.visitor_id
       const creditsAmount = parseInt(orderData?.credits || '5', 10)

@@ -52,9 +52,11 @@ export async function POST(request: NextRequest) {
     // Determine which product to offer
     const isFirstPurchase = user.is_first_purchase
     const creditsOffer = 5
-    const priceInCents = isFirstPurchase ? 99 : 900 // $0.99 first / $9 regular
+    const variantId = isFirstPurchase
+      ? process.env.LEMONSQUEEZY_VARIANT_FIRST!
+      : process.env.LEMONSQUEEZY_VARIANT_REGULAR!
 
-    // Create LemonSqueezy checkout
+    // Create LemonSqueezy checkout — price comes from the variant in LS dashboard, not from here
     const checkoutRes = await lsFetch('/checkouts', {
       method: 'POST',
       body: JSON.stringify({
@@ -62,23 +64,15 @@ export async function POST(request: NextRequest) {
           type: 'checkouts',
           attributes: {
             checkout_data: {
-              email: `visitor-${visitorId}@aiseoscan.dev`, // placeholder
+              email: `visitor-${visitorId}@aiseoscan.dev`,
               custom: {
                 visitor_id: visitorId,
-                credits: creditsOffer
+                credits: creditsOffer.toString()
               }
             },
             product_options: {
-              name: isFirstPurchase 
-                ? 'AISEO Starter Pack - First Offer (5 Scans)' 
-                : 'AISEO 5 Additional Scans',
-              description: isFirstPurchase
-                ? '🎉 Special first-time offer: 5 AI SEO scans for just $0.99'
-                : '5 additional AI SEO scan credits',
-              price: priceInCents,
-              price_type: 'fixed',
-              redirect_url: `${process.env.NEXT_PUBLIC_APP_URL}/?checkout=success&visitorId=${visitorId}`,
-              receipt_link_url: `${process.env.NEXT_PUBLIC_APP_URL}/?checkout=success&visitorId=${visitorId}`,
+              redirect_url: `${process.env.NEXT_PUBLIC_APP_URL}/?checkout=success`,
+              receipt_link_url: `${process.env.NEXT_PUBLIC_APP_URL}/?checkout=success`,
             },
             checkout_options: {
               button_color: '#6366F1',
@@ -95,9 +89,7 @@ export async function POST(request: NextRequest) {
             variant: {
               data: {
                 type: 'variants',
-                id: isFirstPurchase 
-                  ? process.env.LEMONSQUEEZY_VARIANT_FIRST! 
-                  : process.env.LEMONSQUEEZY_VARIANT_REGULAR!
+                id: variantId
               }
             }
           }
