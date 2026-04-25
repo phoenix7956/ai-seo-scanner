@@ -1,10 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import URLInput from '@/components/URLInput'
 import ScoreCard from '@/components/ScoreCard'
-import PricingCard from '@/components/PricingCard'
 import FAQ from '@/components/FAQ'
+import Link from 'next/link'
 
 const categories = [
   {
@@ -50,13 +50,54 @@ const categories = [
   }
 ]
 
+function getVisitorId(): string {
+  if (typeof window === 'undefined') return ''
+  let vid = localStorage.getItem('aiseo_visitor_id')
+  if (!vid) {
+    vid = 'v_' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36)
+    localStorage.setItem('aiseo_visitor_id', vid)
+  }
+  return vid
+}
+
 export default function Home() {
   const [isScanning, setIsScanning] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const [previewData, setPreviewData] = useState<any>(null)
-  const [showPricing, setShowPricing] = useState(false)
+  const [credits, setCredits] = useState<number | null>(null)
+  const [visitorId, setVisitorId] = useState('')
+  const [showCheckout, setShowCheckout] = useState(false)
+  const [checkoutLoading, setCheckoutLoading] = useState(false)
+  const [showSuccess, setShowSuccess] = useState(false)
+
+  // Init visitor ID and check for success redirect
+  useEffect(() => {
+    const vid = getVisitorId()
+    setVisitorId(vid)
+    
+    // Check for checkout success redirect
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('checkout') === 'success') {
+      setShowSuccess(true)
+      // Refresh credits
+      fetchCredits(vid)
+      // Clean URL
+      window.history.replaceState({}, '', '/')
+    }
+  }, [])
+
+  const fetchCredits = async (vid: string) => {
+    try {
+      const res = await fetch(`/api/user/credits?visitorId=${vid}`)
+      if (res.ok) {
+        const data = await res.json()
+        setCredits(data.credits)
+      }
+    } catch {}
+  }
 
   const handleScan = async (url: string) => {
+    if (!visitorId) return
     setIsScanning(true)
     setShowPreview(false)
     
@@ -64,14 +105,22 @@ export default function Home() {
       const response = await fetch('/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url })
+        body: JSON.stringify({ url, visitorId })
       })
       
       const data = await response.json()
       
+      if (response.status === 402) {
+        // No credits - show purchase modal
+        setCredits(0)
+        setShowCheckout(true)
+        return
+      }
+      
       if (data.scanId) {
         setPreviewData(data)
         setShowPreview(true)
+        setCredits(data.creditsRemaining)
       }
     } catch (error) {
       console.error('Scan failed:', error)
@@ -80,24 +129,32 @@ export default function Home() {
     }
   }
 
-  const handleGetReport = async () => {
-    if (!previewData?.scanId) return
+  const handleCheckout = async () => {
+    if (!visitorId) return
+    setCheckoutLoading(true)
     
     try {
       const response = await fetch('/api/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scanId: previewData.scanId })
+        body: JSON.stringify({ visitorId })
       })
       
       const data = await response.json()
       
-      if (data.url) {
-        window.location.href = data.url
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl
       }
     } catch (error) {
       console.error('Checkout failed:', error)
+    } finally {
+      setCheckoutLoading(false)
     }
+  }
+
+  const handleGetReport = () => {
+    if (!previewData?.scanId) return
+    window.location.href = `/report/${previewData.scanId}?visitorId=${visitorId}`
   }
 
   return (
@@ -114,24 +171,42 @@ export default function Home() {
             <span className="font-bold text-xl text-text-primary">AISEO Scanner</span>
           </div>
           <nav className="flex items-center gap-6 text-sm">
+            {credits !== null && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 rounded-lg">
+                <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-primary font-semibold">{credits} scan{credits !== 1 ? 's' : ''} left</span>
+              </div>
+            )}
             <button 
               onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
               className="text-text-secondary hover:text-text-primary transition-colors"
             >
               Features
             </button>
-            <button 
-              onClick={() => setShowPricing(true)}
-              className="text-text-secondary hover:text-text-primary transition-colors"
-            >
-              Pricing
-            </button>
-            <button className="px-4 py-2 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors">
-              Sign In
-            </button>
           </nav>
         </div>
       </header>
+
+      {/* Success Banner */}
+      {showSuccess && (
+        <div className="bg-emerald-500/10 border-b border-emerald-500/20 py-3 px-4">
+          <div className="max-w-6xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-2 text-emerald-400">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="font-medium">Payment successful! You now have 5 additional scans.</span>
+            </div>
+            <button onClick={() => setShowSuccess(false)} className="text-emerald-400/60 hover:text-emerald-400">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Hero Section */}
       <section className="py-20 px-4">
@@ -166,7 +241,7 @@ export default function Home() {
               <svg className="w-4 h-4 text-emerald-500" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
               </svg>
-              No signup required
+              {credits === null ? '1 free scan' : `${credits} free scan${credits !== 1 ? 's' : ''} left`}
             </span>
             <span className="flex items-center gap-2">
               <svg className="w-4 h-4 text-emerald-500" fill="currentColor" viewBox="0 0 20 20">
@@ -197,37 +272,62 @@ export default function Home() {
               </div>
               
               <div className="grid gap-4 mb-8">
-                {previewData.scores?.map((score: any, idx: number) => (
-                  <div key={idx} className="flex items-center justify-between p-4 bg-background/50 rounded-lg">
+                {previewData.scores?.map((score: any) => (
+                  <div key={score.category} className="flex items-center justify-between p-4 bg-background/50 rounded-lg">
                     <div className="flex items-center gap-3">
                       {categories.find(c => c.id === score.category)?.icon}
                       <span className="text-text-primary">{categories.find(c => c.id === score.category)?.name}</span>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <span className={`text-lg font-semibold ${
-                        score.value < 12.5 ? 'text-red-400' : 
-                        score.value < 18.75 ? 'text-yellow-400' : 'text-emerald-400'
-                      }`}>
-                        {score.value}/25
-                      </span>
-                    </div>
+                    <span className={`text-lg font-semibold ${
+                      score.value < 12.5 ? 'text-red-400' : 
+                      score.value < 18.75 ? 'text-yellow-400' : 'text-emerald-400'
+                    }`}>
+                      {score.value}/25
+                    </span>
                   </div>
                 ))}
               </div>
               
               <div className="border-t border-gray-700/50 pt-6">
-                <p className="text-center text-text-secondary mb-4">
-                  <span className="text-red-400 font-semibold">{previewData.criticalCount} critical</span> issues found
-                </p>
-                <button
-                  onClick={handleGetReport}
-                  className="w-full py-4 bg-gradient-to-r from-primary to-secondary rounded-xl font-semibold text-lg hover:opacity-90 transition-opacity shadow-lg shadow-primary/25"
-                >
-                  Unlock Full Report - $29
-                </button>
-                <p className="text-center text-xs text-text-secondary mt-3">
-                  See detailed fixes, code examples, and implementation guides
-                </p>
+                {credits === 0 ? (
+                  <div className="text-center">
+                    <p className="text-text-secondary mb-4">
+                      <span className="text-red-400 font-semibold">{previewData.criticalCount} critical</span> issues found
+                    </p>
+                    <div className="bg-gradient-to-r from-primary/20 to-secondary/20 rounded-xl p-6 border border-primary/20 mb-4">
+                      <div className="flex items-center justify-center gap-2 mb-2">
+                        <span className="text-3xl">🎉</span>
+                        <span className="text-lg font-semibold text-white">First-time offer</span>
+                      </div>
+                      <p className="text-4xl font-bold text-white mb-1">$0.99</p>
+                      <p className="text-text-secondary mb-4">for 5 AI SEO scans</p>
+                      <button
+                        onClick={handleCheckout}
+                        disabled={checkoutLoading}
+                        className="w-full py-3 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-xl font-semibold transition-colors"
+                      >
+                        {checkoutLoading ? 'Loading...' : 'Buy 5 Scans - $0.99'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center">
+                    <p className="text-center text-text-secondary mb-4">
+                      <span className="text-red-400 font-semibold">{previewData.criticalCount} critical</span> issues found
+                    </p>
+                    <button
+                      onClick={handleGetReport}
+                      className="w-full py-4 bg-gradient-to-r from-primary to-secondary rounded-xl font-semibold text-lg hover:opacity-90 transition-opacity shadow-lg shadow-primary/25"
+                    >
+                      View Full Report ({credits} scans left)
+                    </button>
+                    {previewData.preview?.firstPurchaseBonus && (
+                      <p className="text-center text-xs text-primary mt-3">
+                        🎉 Special: Buy 5 scans for just $0.99 (first purchase only)
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -250,7 +350,7 @@ export default function Home() {
             {categories.map((cat) => (
               <div 
                 key={cat.id}
-                className="p-6 bg-surface/50 rounded-xl border border-gray-700/50 hover:border-primary/30 transition-all duration-300 hover:shadow-lg hover:shadow-primary/5"
+                className="p-6 bg-surface/50 rounded-xl border border-gray-700/50 hover:border-primary/30 transition-all duration-300"
               >
                 <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary mb-4">
                   {cat.icon}
@@ -263,154 +363,37 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Why AI SEO Matters */}
+      {/* Pricing Section */}
       <section className="py-20 px-4">
-        <div className="max-w-6xl mx-auto">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-6">
-                The search landscape has fundamentally changed
-              </h2>
-              <p className="text-text-secondary text-lg mb-8">
-                AI engines like ChatGPT, Perplexity, and SearchGPT are becoming the primary way people find information. 
-                Is your content optimized for this new reality?
-              </p>
-              
-              <div className="space-y-6">
-                <div className="flex gap-4">
-                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold">
-                    89%
-                  </div>
-                  <div>
-                    <p className="font-semibold text-text-primary">Of searches now use AI engines</p>
-                    <p className="text-sm text-text-secondary">Traditional search is declining fast</p>
-                  </div>
-                </div>
-                
-                <div className="flex gap-4">
-                  <div className="w-12 h-12 rounded-lg bg-accent/10 flex items-center justify-center text-accent font-bold">
-                    5x
-                  </div>
-                  <div>
-                    <p className="font-semibold text-text-primary">More traffic for AI-optimized content</p>
-                    <p className="text-sm text-text-secondary">Early movers get the advantage</p>
-                  </div>
-                </div>
-                
-                <div className="flex gap-4">
-                  <div className="w-12 h-12 rounded-lg bg-secondary/10 flex items-center justify-center text-secondary font-bold">
-                    73%
-                  </div>
-                  <div>
-                    <p className="font-semibold text-text-primary">Of websites aren't AI-optimized</p>
-                    <p className="text-sm text-text-secondary">Huge opportunity gap</p>
-                  </div>
-                </div>
-              </div>
+        <div className="max-w-4xl mx-auto text-center">
+          <h2 className="text-3xl md:text-4xl font-bold text-text-primary mb-4">
+            Simple, transparent pricing
+          </h2>
+          <p className="text-text-secondary text-lg mb-10">
+            Start free, pay less than a coffee when you're ready
+          </p>
+          
+          <div className="grid md:grid-cols-2 gap-6 max-w-xl mx-auto">
+            <div className="p-8 bg-surface/50 rounded-2xl border border-gray-700/50">
+              <div className="text-6xl font-bold text-text-primary mb-2">1</div>
+              <p className="text-text-secondary mb-6">Free scan to get started</p>
+              <div className="text-2xl font-bold text-emerald-400 mb-1">$0</div>
+              <p className="text-sm text-text-secondary">No credit card needed</p>
             </div>
             
-            <div className="relative">
-              <div className="aspect-square rounded-2xl bg-gradient-to-br from-primary/20 via-surface to-secondary/20 border border-gray-700/50 p-8 flex flex-col justify-center">
-                <div className="text-center mb-8">
-                  <p className="text-sm text-text-secondary uppercase tracking-wide mb-2">Your AI Citation Score</p>
-                  <p className="text-7xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                    ?
-                  </p>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  {categories.map((cat) => (
-                    <div key={cat.id} className="p-4 bg-background/50 rounded-lg text-center">
-                      <div className="w-8 h-8 mx-auto mb-2 text-primary">{cat.icon}</div>
-                      <p className="text-xs text-text-secondary">{cat.name}</p>
-                      <p className="text-lg font-semibold text-text-primary">?/25</p>
-                    </div>
-                  ))}
-                </div>
-                
-                <div className="mt-6 p-4 bg-primary/10 rounded-lg border border-primary/20 text-center">
-                  <p className="text-sm text-primary font-medium">
-                    Run your first scan to find out
-                  </p>
-                </div>
+            <div className="p-8 bg-gradient-to-br from-primary/10 to-secondary/10 rounded-2xl border border-primary/20 relative">
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-primary text-white text-xs font-semibold rounded-full">
+                BEST VALUE
               </div>
+              <div className="text-6xl font-bold text-white mb-2">5</div>
+              <p className="text-text-secondary mb-6">Scans per purchase</p>
+              <div className="text-2xl font-bold text-primary mb-1">$0.99</div>
+              <p className="text-sm text-text-secondary">First purchase only</p>
+              <p className="text-xs text-primary mt-2">~$0.20 per scan</p>
             </div>
           </div>
         </div>
       </section>
-
-      {/* Pricing Modal */}
-      {showPricing && (
-        <section className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-background rounded-2xl border border-gray-700/50 p-8 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-8">
-              <h2 className="text-2xl font-bold text-text-primary">Choose Your Plan</h2>
-              <button 
-                onClick={() => setShowPricing(false)}
-                className="p-2 text-text-secondary hover:text-text-primary transition-colors"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            
-            <div className="grid md:grid-cols-3 gap-6">
-              <PricingCard
-                title="Single Scan"
-                price={29}
-                credits={1}
-                pricePerScan={29}
-                features={[
-                  'Complete AI SEO analysis',
-                  'Full issue breakdown',
-                  'Implementation guides',
-                  'Schema markup templates',
-                  'PDF download',
-                  '30-day report access'
-                ]}
-                onSelect={() => setShowPricing(false)}
-              />
-              
-              <PricingCard
-                title="Starter"
-                price={119}
-                credits={5}
-                pricePerScan={23.80}
-                features={[
-                  'Complete AI SEO analysis',
-                  'Full issue breakdown',
-                  'Implementation guides',
-                  'Schema markup templates',
-                  'PDF downloads',
-                  '30-day report access',
-                  'Save 18%'
-                ]}
-                popular={true}
-                onSelect={() => setShowPricing(false)}
-              />
-              
-              <PricingCard
-                title="Agency"
-                price={199}
-                credits={10}
-                pricePerScan={19.90}
-                features={[
-                  'Complete AI SEO analysis',
-                  'Full issue breakdown',
-                  'Implementation guides',
-                  'Schema markup templates',
-                  'PDF downloads',
-                  '30-day report access',
-                  'Save 31%',
-                  'Priority support'
-                ]}
-                onSelect={() => setShowPricing(false)}
-              />
-            </div>
-          </div>
-        </section>
-      )}
 
       {/* FAQ Section */}
       <section className="py-20 px-4 bg-surface/30">

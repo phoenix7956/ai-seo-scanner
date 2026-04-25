@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    serverComponentsExternalPackages: ['puppeteer', 'cheerio']
+  images: {
+    unoptimized: true
   }
 }
 module.exports = nextConfig

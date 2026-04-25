@@ -49,8 +49,10 @@
 [Features Section]
 - 3列网格展示4个检查维度
 
-[Pricing Section]
-- 3个价格卡片 ($29单次, $119/5次, $199/10次)
+**Pricing Section**
+- First scan: FREE (1 credit)
+- First purchase: $0.99 for 5 scans (🎉 new user special)
+- Regular: $9 for 5 scans
 
 [FAQ Section]
 - 手风琴展开
@@ -171,9 +173,9 @@
 - **Frontend**: Next.js 14 (App Router)
 - **Styling**: Tailwind CSS
 - **Backend**: Next.js API Routes
-- **Database**: Supabase (PostgreSQL)
-- **Payments**: Stripe Checkout
-- **Scraping**: Puppeteer + Cheerio
+- **Database**: Supabase (PostgreSQL) — free tier
+- **Payments**: LemonSqueezy ($0.99 first offer / $9 regular, 0.5% platform fee)
+- **Scraping**: Cheerio + fetch
 - **Deployment**: Vercel
 
 ### Data Model

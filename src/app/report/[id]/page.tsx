@@ -45,22 +45,35 @@ const categories = [
   }
 ]
 
+function getVisitorId(): string {
+  if (typeof window === 'undefined') return ''
+  let vid = localStorage.getItem('aiseo_visitor_id')
+  if (!vid) {
+    vid = 'v_' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36)
+    localStorage.setItem('aiseo_visitor_id', vid)
+  }
+  return vid
+}
+
 export default function ReportPage() {
   const params = useParams()
   const searchParams = useSearchParams()
   const [report, setReport] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [credits, setCredits] = useState<number | null>(null)
+  const [showCheckout, setShowCheckout] = useState(false)
+  const [checkoutLoading, setCheckoutLoading] = useState(false)
 
   const scanId = params.id as string
+  const visitorId = searchParams.get('visitorId') || getVisitorId()
   const isDemo = searchParams.get('demo') === 'true'
 
   useEffect(() => {
     const fetchReport = async () => {
       try {
-        // In demo mode, fetch from local demo data
         if (isDemo) {
-          // Simulate fetching - in real app this would be a real API call
+          // Demo data
           setReport({
             url: 'demo-example.com',
             overallScore: 62,
@@ -71,42 +84,11 @@ export default function ReportPage() {
               { category: 'trust', value: 15 }
             ],
             issues: [
-              {
-                severity: 'critical',
-                category: 'schema',
-                title: 'No JSON-LD structured data found',
-                description: 'AI search engines rely heavily on structured data to understand content context.',
-                fix: 'Add JSON-LD schema markup to your pages.',
-                code: '<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article"}</script>'
-              },
-              {
-                severity: 'critical',
-                category: 'technical',
-                title: 'Website is not using HTTPS',
-                description: 'HTTPS is a strong trust signal for AI search engines.',
-                fix: 'Install an SSL certificate and redirect HTTP to HTTPS.'
-              },
-              {
-                severity: 'high',
-                category: 'schema',
-                title: 'Missing Organization schema',
-                description: 'Organization schema helps AI establish who is behind the content.',
-                fix: 'Add Organization schema to your homepage.'
-              },
-              {
-                severity: 'high',
-                category: 'content',
-                title: 'No author information found',
-                description: 'AI engines value author expertise and credibility.',
-                fix: 'Include author bio or byline on your content pages.'
-              },
-              {
-                severity: 'medium',
-                category: 'content',
-                title: 'No FAQ section detected',
-                description: 'FAQ sections are highly valued by AI search engines.',
-                fix: 'Consider adding a FAQ section with common questions.'
-              }
+              { severity: 'critical', category: 'schema', title: 'No JSON-LD structured data found', description: 'AI search engines rely heavily on structured data.', fix: 'Add JSON-LD schema.', code: '<script type="application/ld+json">...</script>' },
+              { severity: 'critical', category: 'technical', title: 'Website is not using HTTPS', description: 'HTTPS is a strong trust signal.', fix: 'Install SSL.' },
+              { severity: 'high', category: 'schema', title: 'Missing Organization schema', description: 'Organization schema helps AI establish identity.', fix: 'Add Organization schema.' },
+              { severity: 'high', category: 'content', title: 'No author information found', description: 'AI engines value author expertise.', fix: 'Include author bio.' },
+              { severity: 'medium', category: 'content', title: 'No FAQ section detected', description: 'FAQ sections are highly valued by AI.', fix: 'Add FAQ section.' }
             ],
             criticalCount: 2,
             scannedAt: new Date().toISOString()
@@ -115,11 +97,18 @@ export default function ReportPage() {
           return
         }
 
-        const response = await fetch(`/api/scan?id=${scanId}`)
+        const response = await fetch(`/api/scan?id=${scanId}&visitorId=${visitorId}`)
         const data = await response.json()
         
         if (response.ok) {
           setReport(data)
+          if (data.creditsRemaining !== undefined) {
+            setCredits(data.creditsRemaining)
+          }
+        } else if (response.status === 403) {
+          // Not authorized - show locked view
+          setError('PURCHASE_REQUIRED')
+          setShowCheckout(true)
         } else {
           setError(data.error || 'Failed to load report')
         }
@@ -131,7 +120,24 @@ export default function ReportPage() {
     }
 
     fetchReport()
-  }, [scanId, isDemo])
+  }, [scanId, visitorId, isDemo])
+
+  const handleCheckout = async () => {
+    setCheckoutLoading(true)
+    try {
+      const response = await fetch('/api/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visitorId })
+      })
+      const data = await response.json()
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl
+      }
+    } catch {
+      setCheckoutLoading(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -144,7 +150,46 @@ export default function ReportPage() {
     )
   }
 
-  if (error) {
+  // Purchase required state
+  if (showCheckout && error === 'PURCHASE_REQUIRED') {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="text-center max-w-md mx-auto">
+          <div className="w-20 h-20 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-6">
+            <svg className="w-10 h-10 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-bold text-text-primary mb-3">Full Report Locked</h1>
+          <p className="text-text-secondary mb-6">
+            Purchase a scan pack to unlock the complete AI SEO analysis with all detailed fixes and code examples.
+          </p>
+          
+          <div className="bg-gradient-to-br from-primary/10 to-secondary/10 rounded-2xl p-6 border border-primary/20 mb-6">
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <span className="text-3xl">🎉</span>
+              <span className="text-lg font-semibold text-white">First-time offer</span>
+            </div>
+            <p className="text-4xl font-bold text-white mb-1">$0.99</p>
+            <p className="text-text-secondary mb-4">5 AI SEO scans</p>
+            <button
+              onClick={handleCheckout}
+              disabled={checkoutLoading}
+              className="w-full py-3 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-xl font-semibold transition-colors"
+            >
+              {checkoutLoading ? 'Loading...' : 'Buy 5 Scans - $0.99'}
+            </button>
+          </div>
+          
+          <Link href="/" className="text-primary hover:underline text-sm">
+            ← Back to Home
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  if (error && error !== 'PURCHASE_REQUIRED') {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center max-w-md mx-auto p-8">
@@ -182,9 +227,19 @@ export default function ReportPage() {
             </div>
             <span className="font-bold text-xl text-text-primary">AISEO Scanner</span>
           </Link>
-          <Link href="/" className="text-sm text-text-secondary hover:text-text-primary transition-colors">
-            ← New Scan
-          </Link>
+          <div className="flex items-center gap-4">
+            {credits !== null && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 rounded-lg">
+                <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-primary font-semibold text-sm">{credits} scan{credits !== 1 ? 's' : ''} left</span>
+              </div>
+            )}
+            <Link href="/" className="text-sm text-text-secondary hover:text-text-primary transition-colors">
+              ← New Scan
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -197,7 +252,7 @@ export default function ReportPage() {
               <p className="text-sm text-text-secondary mb-1">AI SEO Report for</p>
               <p className="text-xl font-semibold text-text-primary break-all">{report.url}</p>
               <p className="text-sm text-text-secondary mt-1">
-                Scanned on {new Date(report.scannedAt).toLocaleDateString('en-US', { 
+                Scanned on {new Date(report.scannedAt || report.createdAt).toLocaleDateString('en-US', { 
                   year: 'numeric', 
                   month: 'long', 
                   day: 'numeric' 
@@ -228,7 +283,7 @@ export default function ReportPage() {
         <div className="grid gap-4 mb-8">
           {report.scores.map((score: any) => {
             const cat = categories.find(c => c.id === score.category)
-            const issues = report.issues.filter((i: any) => i.category === score.category)
+            const issues = report.issues?.filter((i: any) => i.category === score.category) || []
             
             return (
               <ScoreCard
@@ -249,7 +304,7 @@ export default function ReportPage() {
           
           <div className="space-y-4">
             {report.issues
-              .filter((i: any) => i.severity === 'critical' || i.severity === 'high')
+              ?.filter((i: any) => i.severity === 'critical' || i.severity === 'high')
               .slice(0, 5)
               .map((issue: any, idx: number) => (
                 <div key={idx} className="flex gap-4 p-4 bg-background/50 rounded-lg">
@@ -259,9 +314,11 @@ export default function ReportPage() {
                   <div>
                     <h3 className="font-medium text-text-primary">{issue.title}</h3>
                     <p className="text-sm text-text-secondary mt-1">{issue.description}</p>
+                    {issue.fix && (
+                      <p className="text-sm text-emerald-400 mt-1">→ {issue.fix}</p>
+                    )}
                     {issue.code && (
                       <div className="mt-2">
-                        <p className="text-xs text-emerald-400 mb-1">Quick fix:</p>
                         <pre className="p-2 bg-black/30 rounded text-xs text-gray-300 overflow-x-auto">
                           {issue.code}
                         </pre>
@@ -270,16 +327,6 @@ export default function ReportPage() {
                   </div>
                 </div>
               ))}
-          </div>
-          
-          <div className="mt-6 pt-6 border-t border-gray-700/50">
-            <p className="text-center text-text-secondary text-sm">
-              Want a complete implementation guide?{' '}
-              <button className="text-primary hover:underline">
-                Upgrade to Agency Plan
-              </button>{' '}
-              for detailed step-by-step instructions.
-            </p>
           </div>
         </div>
 
