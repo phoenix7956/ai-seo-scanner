@@ -1,4 +1,4 @@
-name: Deploy to Cloudflare Pages
+name: Deploy to Render
 
 on:
   push:
@@ -8,9 +8,6 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      deployments: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,11 +34,5 @@ jobs:
           LEMONSQUEEZY_WEBHOOK_SECRET: ${{ secrets.LEMONSQUEEZY_WEBHOOK_SECRET }}
           NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
 
-      - name: Deploy to Cloudflare Pages
-        uses: cloudflare/pages-action@v1
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: 4a241cdd7b18f54dffe6e4ef69334d19
-          projectName: ai-seo-scanner
-          directory: .next
-          gitHubToken: ${{ github.token }}
+      - name: Trigger Render Deploy
+        run: curl -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
