@@ -1,3 +1,16 @@
+# ⚠️ DISCONTINUED — 2026-05
+
+> **This project is no longer maintained.** The code is preserved as a historical
+> reference only. No new features, bug fixes, or releases will be made.
+>
+> **Status**: Archived 2026-05
+> **Last update**: 2026-05-30
+> **Reason**: Project direction changed; not actively developed.
+> **Documentation**: See https://github.com/phoenix7956/phoenix7956/blob/main/README.md
+> for the full project registry (active + discontinued).
+
+---
+
 # AISEO Scanner - 产品规格书
 
 ## 1. Concept & Vision
